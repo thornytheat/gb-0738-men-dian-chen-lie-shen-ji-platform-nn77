@@ -78,11 +78,18 @@ function photos(root, payload, dataset) {
 
 function coverage(root, payload) {
   root.append(table([['店组'], ['权重', 'num'], ['目标', 'num'], ['候选', 'num'], ['入样', 'num'], ['已核', 'num'], ['待证', 'num'],
-    ['隔离', 'num'], ['缺额', 'num'], ['有效缺口', 'num']], payload.strata.map(row => [row.title, row.weight, row.target,
+    ['隔离', 'num'], ['名册缺额', 'num'], ['有效缺口', 'num']], payload.strata.map(row => [row.title, row.weight, row.target,
     row.pool, row.selected, row.verified, row.pending, row.isolated, row.unfilled, row.gap])));
   group(root, '抽中柜位', table([['柜位'], ['店组'], ['证据状态'], ['原因'], ['名册源行'], ['抽签摘要', 'clip']], payload.slots.map(row => [
     row.key, row.group, row.evidence_status === 'VERIFIED' ? '已核' : names[row.evidence_status], reason(row.reason), source(row.source), row.score,
   ])));
+  const waitlist = payload.strata.flatMap(group => group.ranked_candidates
+    .filter(candidate => !candidate.selected)
+    .map(candidate => [group.title, candidate.rank, candidate.key, candidate.score,
+    group.unfilled && !group.waitlist.length ? '名册已抽尽，缺额留组' : '同组候补']));
+  group(root, '同组候补顺序（按抽签摘要排序）', waitlist.length
+    ? table([['店组'], ['组内名次', 'num'], ['候补柜位'], ['抽签摘要', 'clip'], ['说明']], waitlist)
+    : element('p', '各店组名册均已抽尽，无同组候补。', 'empty'));
 }
 
 function penalties(root, payload, filter) {

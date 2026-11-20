@@ -87,3 +87,31 @@ def test_hash_changes_when_only_photo_bytes_change(settings, tmp_path):
     assert not reused and second['manifest']['run_id'] != first['manifest']['run_id']
     assert second['manifest']['inputs']['photos/P001.png'] != first['manifest']['inputs']['photos/P001.png']
     assert second['settlement']['reason_counts']['BAD_PHOTO_FILE'] == 2
+
+
+def test_settlement_write_failure_keeps_the_previous_batch_and_its_roster(settings, monkeypatch):
+    store = Store(settings.database)
+    store.initialize()
+    first, reused = run_audit(settings, store, Options())
+    assert not reused
+    run_id = first['manifest']['run_id']
+
+    def broken_save(snapshot):
+        raise RuntimeError('disk full while publishing batch')
+
+    monkeypatch.setattr(store, 'save', broken_save)
+    with pytest.raises(RuntimeError):
+        run_audit(settings, store, Options(sample_size=17))
+    monkeypatch.undo()
+    with sqlite3.connect(settings.database) as connection:
+        assert connection.execute('SELECT COUNT(*) FROM runs').fetchone() == (1,)
+        assert connection.execute('SELECT run_id FROM runs').fetchone()[0] == run_id
+    restored = store.get(run_id)
+    assert restored['manifest']['run_id'] == run_id
+    assert [row['key'] for row in restored['coverage']['slots']] == \
+        [row['key'] for row in first['coverage']['slots']]
+    assert restored['settlement']['selected'] == first['settlement']['selected']
+    # 修复后以相同档件重跑，仍取回旧批次和同一名单。
+    again, reused_again = run_audit(settings, store, Options())
+    assert reused_again and again['manifest']['run_id'] == run_id
+

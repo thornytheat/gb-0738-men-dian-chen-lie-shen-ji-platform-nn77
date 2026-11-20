@@ -77,17 +77,48 @@ function refreshDetails() {
   fillAppeals();
 }
 
+function ledgerChecks(snapshot) {
+  const coverage = snapshot.coverage;
+  const settlement = snapshot.settlement;
+  const problems = [];
+  if (coverage.target !== coverage.selected + coverage.unfilled) {
+    problems.push(`目标 ${coverage.target} 柜与抽中 ${coverage.selected} 柜、名册缺额 ${coverage.unfilled} 柜对不上`);
+  }
+  if (coverage.slots.length !== coverage.selected) {
+    problems.push(`抽中计数为 ${coverage.selected}，柜位明细只有 ${coverage.slots.length} 条`);
+  }
+  if (settlement.selected !== coverage.selected || snapshot.penalties.rows.length !== coverage.selected) {
+    problems.push('结算或裁决柜位数与抽中名单不一致');
+  }
+  for (const group of coverage.strata) {
+    if (group.selected !== group.verified + group.pending + group.isolated) {
+      problems.push(`${group.title} 的已核、待证、隔离之和不等于入样数`);
+    }
+    if (group.target !== group.selected + group.unfilled) {
+      problems.push(`${group.title} 的目标、入样与名册缺额对不上`);
+    }
+  }
+  return problems;
+}
+
 function syncDashboard(snapshot) {
   state.token++;
   state.snapshot = snapshot;
   state.preview = null;
+  const problems = ledgerChecks(snapshot);
+  const warning = get('ledger-warning');
+  warning.hidden = !problems.length;
+  warning.textContent = problems.join('；');
   get('campaign').textContent = snapshot.campaign.title;
   get('batch-stamp').textContent = `${snapshot.manifest.version} / ${snapshot.manifest.run_id.slice(0, 12)}`;
   get('batch-stamp').title = snapshot.manifest.run_id;
   get('stat-selected').textContent = snapshot.settlement.selected;
+  get('stat-selected-unit').textContent = snapshot.coverage.unfilled
+    ? `柜 · 目标 ${snapshot.coverage.target}，缺额 ${snapshot.coverage.unfilled}`
+    : `柜 · 目标 ${snapshot.coverage.target}`;
   for (const status of outcomes) get(`stat-${status.toLowerCase()}`).textContent = snapshot.settlement.counts[status];
   get('stat-net').textContent = money(snapshot.appeals.net_cents);
-  get('matrix-meta').textContent = `${snapshot.coverage.selected} 柜`;
+  get('matrix-meta').textContent = `${snapshot.coverage.selected} / ${snapshot.coverage.target} 柜`;
   get('gap-meta').textContent = `${snapshot.coverage.verified} / ${snapshot.coverage.target} 已核`;
   get('cases-meta').textContent = `${snapshot.settlement.counts.VIOLATION} 笔违规`;
   get('account-meta').textContent = snapshot.appeals.balanced ? '勾稽通过 · 元' : '待勾稽';

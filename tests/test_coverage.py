@@ -50,3 +50,28 @@ def test_full_reference_has_zero_gap_and_requested_size_is_applied(reference):
     rows, quotas = choose_slots(reference.intake, 10)
     assert len(rows) == 10
     assert [row['selected'] for row in quotas] == [5, 3, 2]
+
+
+def test_waitlist_keeps_deterministic_rank_order_within_each_stratum(field):
+    strata = {row['code']: row for row in field.coverage['strata']}
+    core = strata['CORE']
+    ranked = [item['key'] for item in core['ranked_candidates']]
+    assert ranked[0] == '002:A03'
+    assert core['waitlist'] == ranked[core['selected']:]
+    assert [item['rank'] for item in core['ranked_candidates']] == list(range(1, core['pool'] + 1))
+    # 近郊名册只有 3 柜，候补序列为空，缺额留在本组而非借柜。
+    rural = strata['RURAL']
+    assert rural['waitlist'] == [] and rural['unfilled'] == 1
+    assert all(item['group'] == 'RURAL' for item in rural['ranked_candidates'])
+
+
+def test_target_selected_and_unfilled_reconcile_at_top_and_stratum_level(field):
+    result = field.coverage
+    assert result['target'] == result['selected'] + result['unfilled']
+    for group in result['strata']:
+        assert group['target'] == group['selected'] + group['unfilled']
+        assert group['selected'] == group['verified'] + group['pending'] + group['isolated']
+        assert group['gap'] == group['pending'] + group['isolated'] + group['unfilled']
+    assert result['selected'] == result['verified'] + result['pending'] + result['isolated']
+    assert len(result['slots']) == result['selected'] == len({row['key'] for row in result['slots']})
+
